@@ -2,31 +2,31 @@
 
 ## How Configuring the Java driver works
 
-The two basic components in the Java driver are the Cluster and the Session. 
-The Cluster is the object you will create first and on which you will apply all 
-your global configuration options. Then, connecting to the Cluster creates a 
-Session. Queries are executed through the Session.
+The two basic components in the Java driver are the `Cluster` and the `Session`.
+The `Cluster` is the object to create first and on which you will apply all
+your global configuration options. Connecting to the `Cluster` creates a
+`Session`. Queries are executed through the `Session`.
 
-The Cluster object then is to be viewed as the equivalent of the AstyanaxContext 
-object. When ‘starting’ an AstyanaxContext object you typically get a Keyspace 
-object, the Keyspace object is the equivalent of the Java driver’s Session.
+The `Cluster` object then is to be viewed as the equivalent of the `AstyanaxContext`
+object. When ‘starting’ an `AstyanaxContext` object you typically get a `Keyspace`
+object, the `Keyspace` object is the equivalent of the Java driver’s `Session`.
 
-Configuring a Cluster works with the Builder pattern, and the Builder takes all 
-the configurations into account before building the Cluster.
+Configuring a `Cluster` works with the _Builder_ pattern, and the `Builder` takes all
+the configurations into account before building the `Cluster`.
 
 Following are some examples of the most important configurations that were 
-possible with Astyanax and how to translate them into DS Java driver 
+possible with _Astyanax_ and how to translate them into _DataStax Java driver_
 configurations.
 
 ## Connection pools
 
-Configuration of connection pools in Astyanax are made through the 
-ConnectionPoolConfigurationImpl. This object gathers important configurations 
-that the Java driver has categorized in multiple Option and Policy kinds.
+Configuration of connection pools in _Astyanax_ are made through the
+`ConnectionPoolConfigurationImpl`. This object gathers important configurations
+that the Java driver has categorized in multiple _Option_ and _Policy_ kinds.
 
 ### Connections pools internals
-Everything concerning the internal pools of connections to the Cassandra nodes 
-will be gathered in the Java driver in the PoolingOptions :
+Everything concerning the internal pools of connections to the _Cassandra nodes_
+will be gathered in the Java driver in the `PoolingOptions` :
 
 _Astyanax :_
 
@@ -50,7 +50,7 @@ PoolingOptions poolingOptions =
 
 ### Timeouts
 
-Timeouts concerning requests, or connections will be part of the SocketOptions.
+Timeouts concerning requests, or connections will be part of the `SocketOptions`.
 
 _Astyanax :_
 
@@ -71,18 +71,18 @@ SocketOptions so =
 ```
 
 ## Load Balancing
-Both Astyanax and the Java driver connect to multiple nodes of the Cassandra 
+Both _Astyanax_ and the _Java driver_ connect to multiple nodes of the _Cassandra_
 cluster. Distributing requests through all the nodes plays an important role in 
-the good behaviour of the Cluster and for performance. With Astyanax, requests 
-(or “operations”) can be sent directly to replicas that have a copy of the data 
-targeted by the “Row key” specified in the operation, since the API is low-level, 
-it forces the user to provide Row keys, known as the TokenAware connection pool 
-type. This setting is also present in the Java driver, however the configuration 
-is different and provides more options to tweak.
+the good operation of the `Cluster` and for best performances. With _Astyanax_, 
+requests (or “operations”) can be sent directly to replicas that have a copy of 
+the data targeted by the _“Row key”_ specified in the operation, since the API is 
+low-level, it forces the user to provide _Row keys_, known as the `TokenAware` 
+connection pool type. This setting is also present in the _Java driver_, however 
+the configuration is different and provides more options to tweak.
 
-Load balancing in the Java driver is a Policy, it is a class that will be 
-plugged in the Java driver’s code and the Driver will call its methods when it 
-needs to. The Java driver comes with a preset of specific load balancing policies. 
+Load balancing in the Java driver is a _Policy_, it is a class that will be 
+plugged in the _Java driver_’s code and the Driver will call its methods when it 
+needs to. The _Java driver_ comes with a preset of specific load balancing policies. 
 Here’s an equivalent code :
 
 _Astyanax :_
@@ -109,23 +109,25 @@ LoadBalancingPolicy lbp = new TokenAwarePolicy(
 );
 ```
 
-By default the Java driver will instantiate the exact Load balancing policy 
-shown above, with the LocalDC being the DC of the first host the driver connects 
-to. So to get the same behaviour than the TokenAware pool type of Astyanax, 
+*By default* the _Java driver_ will instantiate the exact Load balancing policy 
+shown above, with the `LocalDC` being the DC of the first host the driver connects 
+to. So to get the same behaviour than the _TokenAware_ pool type of _Astyanax_, 
 users shouldn’t need to specify a load balancing policy since the default one 
 should cover it.
 
-Note that since CQL is an abstraction of the Cassandra’s architecture, a simple 
-query needs to have the Row key specified explicitly on a Statement in order 
-to benefit from the TokenAware routing (and the Row key in the Java driver is 
-referenced as Routing Key), unlike the Astyanax driver. Unless using prepared 
-statements. Please see [DOC-LINK] for specific information.
+Important : Note that since _CQL_ is an abstraction of the Cassandra’s architecture, a simple 
+query needs to have the _Row key_ specified explicitly on a `Statement` in order 
+to benefit from the _TokenAware_ routing (the _Row key_ in the _Java driver_ is 
+referenced as _Routing Key_), unlike the _Astyanax_ driver. 
+Some differences occur related to the different kinds of `Statements` the _Java
+driver_ provides. Please see [DOC-LINK] for specific information.
 
-Load balancing policies can easily be implemented by the user, and supplied to 
-the Driver for a specific use case.
+Custom load balancing policies can easily be implemented by users, and supplied to 
+the _Java driver_ for specific use cases. All information necessary if available
+in the Load balaning policies docs. [DOC-LINK]
 
 ## Consistency levels
-Consistency levels can be set per-statement, or globally through the QueryOptions.
+Consistency levels can be set per-statement, or globally through the `QueryOptions`.
 
 _Astyanax :_
 
@@ -142,20 +144,20 @@ _Java driver :_
 QueryOptions qo = new QueryOptions().setConsistencyLevel(ConsistencyLevel.ALL);
 ```
 
-Since the Java driver only executes CQL statements, which can be either reads 
-or writes in Cassandra, it is not possible to globally configure the 
+Since the _Java driver_ only executes _CQL_ statements, which can be either reads
+or writes in _Cassandra_, it is not possible to globally configure the
 Consistency Level for only reads or only writes. To do so, since the Consistency 
 Level can be set per-statement, you can either set it on every statement, or use 
-PreparedStatements (if queries are to be repeated with different values): in 
-this case, set the CL on the PreparedStatement, and the BoundStatements will 
-inherit the CL from the Prepared statements they were prepared from. More 
-informations about how Statements work in the Java driver are detailed later 
-in the “Queries and Result” section.
+`PreparedStatements` (if queries are to be repeated with different values): in
+this case, set the CL on the `PreparedStatement`, and the `BoundStatements` will
+inherit the CL from the prepared statements they were prepared from. More
+informations about how `Statement`s work in the _Java driver_ are detailed
+in the “Queries and Result” section [DOC-LINK].
 
 
 ## Authentication
 
-Authentication settings are managed by the AuthProvider class in the Java driver. 
+Authentication settings are managed by the `AuthProvider` class in the _Java driver_.
 It can be highly customizable, but also comes with default simple implementations :
 
 _Astyanax :_
@@ -173,7 +175,7 @@ _Java driver :_
 AuthProvider authProvider = new PlainTextAuthProvider("username", "password");
 ```
 
-The class AuthProvider can be easily implemented to suit the user’s needs, 
+The class `AuthProvider` can be easily implemented to suit the user’s needs,
 documentation about the classes needed is available there [DOC-LINK].
 
 ## Hosts and ports
@@ -198,15 +200,15 @@ Cluster cluster = Cluster.builder()
        .withPort(9042)
 ```
 
-The Java driver by default connects to port 9042, hence you can supply only
-host names with the addContactPoints(String...) method. Note that the contact
-points are only the entry points to the Cluster for the Automatic discovery
-phase, the driver will connect to all hosts of the cluster, in the DC of the
+The _Java driver_ by default connects to port _9042_, hence you can supply only
+host names with the `addContactPoints(String...)` method. Note that the contact
+points are only the entry points to the `Cluster` for the _Automatic discovery
+phase_, the driver will connect to all hosts of the cluster, in the DC of the
 first host in the contact points.
 
 ## Building the Cluster
 With all options previously presented, one may configure and create the
-Cluster object this way :
+`Cluster` object this way :
 
 _Java driver :_
 
@@ -231,8 +233,8 @@ default settings should allow most of the users to get the best out of the
 driver in terms of throughput, they have been thoroughly tested and tweaked to 
 accommodate the users’ needs. If one still wishes to change those, first 
 Monitoring the pools first is advised [DOC-LINK], then a deep dive in the 
-Pools management should also help [DOC-LINK].
+Pools management should provide enough insight [DOC-LINK].
 
-A lot more options are available in the different XxxxOptions classes, policies are 
+A lot more options are available in the different `XxxxOption`s classes, policies are
 also highly customizable since the base drivers implementations can easily be 
 extended and implement users specific actions.

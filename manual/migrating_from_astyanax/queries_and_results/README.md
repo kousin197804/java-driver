@@ -1,18 +1,19 @@
 # Migrate from Astyanax to Java Driver - Queries and Results
 If you have been reading the article linked in Section 1 (From Thrift to CQL), 
-you now know how to translate your previous Astyanax keyspace operations into 
-CQL queries. With the Java driver you need to execute those queries by passing 
+you now know how to translate your previous _Astyanax_ keyspace operations into 
+_CQL_ queries. With the _Java driver_ one needs to execute those queries by passing 
 them through the session. The queries can either be simple strings or 
-materialized in the form of Statements. The driver offers 4 kinds of statements, 
-SimpleStatement, Prepared/BoundStatement, BuiltStatement, BatchStatement. 
+represented in the form of `Statement`s. The driver offers 4 kinds of statements, 
+`SimpleStatement`, `Prepared/BoundStatement`, `BuiltStatement`, `BatchStatement`. 
 All necessary information can be found here [DOC-LINK] about the natures of the 
-different Statements.
+different `Statement`s.
 
-As explained earlier, results of a CQL query will be in the form of Rows from 
-Tables, composed of fixed set of columns, each with a type and a name. The 
-driver exposes the set of Rows returned from a query as a ResultSet, thus 
-containing Rows on which getXXX() can be called. Here is a simple example of 
-translation from Astyanax to Java driver in querying and gathering results.
+As explained earlier, results of a _CQL_ query will be in the form of _Rows_ from 
+_Tables_, composed of fixed set of columns, each with a type and a name. The 
+driver exposes the set of _Rows_ returned from a query as a ResultSet, thus 
+containing _Rows_ on which `getXXX()` can be called. Here are simple examples of 
+translation from _Astyanax_ to _Java driver_ in querying and retrieving
+query results.
 
 ## Single column
 
