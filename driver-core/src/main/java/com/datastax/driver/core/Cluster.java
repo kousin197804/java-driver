@@ -746,17 +746,20 @@ public class Cluster implements Closeable {
 
         /**
          * Allows client to connect to server using latest development protocol version,
-         * which is currently in beta.
+         * which is currently in beta. Calling this method will result into setting
+         * USE_BETA flag in all outgoing messages, which allows server to negotiate
+         * the supported protocol version even if it is currently in beta.
+         * <p/>
+         * This feature is only available starting with version {@link ProtocolVersion#V5 V5}.
          * <p/>
          * Use with caution, refer to the server and protocol documentation for the details
          * on latest protocol version.
-         *
-         * @param allowBetaProtocolVersions {@code true} if connecting with beta protocol version should be allowed,
-         *                                  {@code false} otherwise
          * @return this Builder.
          */
-        public Builder setAllowBetaProtocolVersions(boolean allowBetaProtocolVersions) {
-            this.allowBetaProtocolVersions = allowBetaProtocolVersions;
+        public Builder allowBetaProtocolVersions() {
+            if (protocolVersion != null && protocolVersion.toInt() < ProtocolVersion.V5.toInt())
+                throw new IllegalArgumentException("Can't use beta flag with initial protocol version of " + protocolVersion);
+            this.allowBetaProtocolVersions = true;
             return this;
         }
 
@@ -803,7 +806,7 @@ public class Cluster implements Closeable {
          * (the default), then the native protocol version 1 will be use for the lifetime
          * of the Cluster instance.
          * <p/>
-         * With {@link ProtocolOptions#setAllowBetaProtocolVersions(boolean)}, it is
+         * By using {@link Builder#allowBetaProtocolVersions()}, it is
          * possible to force driver to connect to Cassandra node that supports the latest
          * protocol beta version. Leaving this flag out will let client to connect with
          * latest released version.
@@ -1275,9 +1278,8 @@ public class Cluster implements Closeable {
          */
         @Override
         public Configuration getConfiguration() {
-            ProtocolOptions protocolOptions = new ProtocolOptions(port, protocolVersion, maxSchemaAgreementWaitSeconds, sslOptions, authProvider)
-                    .setCompression(compression)
-                    .setAllowBetaProtocolVersions(allowBetaProtocolVersions);
+            ProtocolOptions protocolOptions = new ProtocolOptions(port, protocolVersion, maxSchemaAgreementWaitSeconds, sslOptions, authProvider, allowBetaProtocolVersions)
+                    .setCompression(compression);
 
             MetricsOptions metricsOptions = new MetricsOptions(metricsEnabled, jmxEnabled);
 

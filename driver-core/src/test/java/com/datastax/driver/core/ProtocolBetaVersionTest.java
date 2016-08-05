@@ -28,7 +28,7 @@ import static org.assertj.core.api.Assertions.fail;
  * Tests for the new USE_BETA flag introduced in protocol v5
  * and Cassandra 3.10.
  */
-@CCMConfig(createCluster = false, version = "3.10")
+@CCMConfig(version = "3.10")
 public class ProtocolBetaVersionTest extends CCMTestsSupport {
 
     /**
@@ -45,10 +45,25 @@ public class ProtocolBetaVersionTest extends CCMTestsSupport {
                 .addContactPoints(getContactPoints())
                 .withPort(ccm().getBinaryPort())
                 .withProtocolVersion(V5)
-                .setAllowBetaProtocolVersions(true)
+                .allowBetaProtocolVersions()
                 .build();
         cluster.connect();
         assertThat(cluster.getConfiguration().getProtocolOptions().getProtocolVersion()).isEqualTo(V5);
+    }
+
+    @Test(groups = "short")
+    public void should_throw_an_exception_when_connected_to_pre_v5_with_allow_beta_protocol_flag() throws Exception {
+        try {
+            Cluster.builder()
+                    .addContactPoints(getContactPoints())
+                    .withPort(ccm().getBinaryPort())
+                    .withProtocolVersion(V4)
+                    .allowBetaProtocolVersions()
+                    .build();
+            fail("Expected IllegalArgumentException");
+        } catch (IllegalArgumentException e) {
+            assertThat(e.getMessage()).isEqualTo("Can't use beta flag with initial protocol version of V4");
+        }
     }
 
     /**
@@ -91,7 +106,7 @@ public class ProtocolBetaVersionTest extends CCMTestsSupport {
         Cluster cluster = Cluster.builder()
                 .addContactPoints(getContactPoints())
                 .withPort(ccm().getBinaryPort())
-                .setAllowBetaProtocolVersions(true)
+                .allowBetaProtocolVersions()
                 // no version explicitly required -> renegotiation allowed
                 .build();
         cluster.connect();

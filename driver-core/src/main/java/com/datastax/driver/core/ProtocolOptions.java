@@ -98,8 +98,8 @@ public class ProtocolOptions {
 
     private final SSLOptions sslOptions; // null if no SSL
     private final AuthProvider authProvider;
+    private final boolean useBeta;
 
-    private volatile boolean useBeta = false;
     private volatile Compression compression = Compression.NONE;
 
     /**
@@ -119,7 +119,7 @@ public class ProtocolOptions {
      * @param port the port to use for the binary protocol.
      */
     public ProtocolOptions(int port) {
-        this(port, null, DEFAULT_MAX_SCHEMA_AGREEMENT_WAIT_SECONDS, null, AuthProvider.NONE);
+        this(port, null, DEFAULT_MAX_SCHEMA_AGREEMENT_WAIT_SECONDS, null, AuthProvider.NONE, false);
     }
 
     /**
@@ -136,11 +136,30 @@ public class ProtocolOptions {
      *                        the Cassandra nodes.
      */
     public ProtocolOptions(int port, ProtocolVersion protocolVersion, int maxSchemaAgreementWaitSeconds, SSLOptions sslOptions, AuthProvider authProvider) {
+        this(port, protocolVersion, maxSchemaAgreementWaitSeconds, sslOptions, authProvider, false);
+    }
+
+    /**
+     * Creates a new {@code ProtocolOptions} instance using the provided port
+     * and SSL context.
+     *
+     * @param port            the port to use for the binary protocol.
+     * @param protocolVersion the protocol version to use. This can be {@code null}, in which case the
+     *                        version used will be the biggest version supported by the <em>first</em> node the driver connects to.
+     *                        See {@link Cluster.Builder#withProtocolVersion} for more details.
+     * @param sslOptions      the SSL options to use. Use {@code null} if SSL is not
+     *                        to be used.
+     * @param authProvider    the {@code AuthProvider} to use for authentication against
+     *                        the Cassandra nodes.
+     * @param useBeta         whether or not this client is allowed to connect to servers with protocol versions that are in beta.
+     */
+    public ProtocolOptions(int port, ProtocolVersion protocolVersion, int maxSchemaAgreementWaitSeconds, SSLOptions sslOptions, AuthProvider authProvider, boolean useBeta) {
         this.port = port;
         this.initialProtocolVersion = protocolVersion;
         this.maxSchemaAgreementWaitSeconds = maxSchemaAgreementWaitSeconds;
         this.sslOptions = sslOptions;
         this.authProvider = authProvider;
+        this.useBeta = useBeta;
     }
 
     void register(Cluster.Manager manager) {
@@ -233,22 +252,10 @@ public class ProtocolOptions {
     }
 
     /**
-     * Allows client to connect to server using latest development protocol version,
-     * which is currently in beta.
-     *
-     * @param useBeta
-     * @return this {@code ProtocolOptions} object.
-     */
-    public ProtocolOptions setAllowBetaProtocolVersions(boolean useBeta) {
-        this.useBeta = useBeta;
-        return this;
-    }
-
-    /**
      * Whether or not connecting to server with protocol version which is currently in beta is allowed.
      * @return {@code true} if connecting with beta protocol version is allowed, {@code false} otherwise.
      */
-    public boolean getAllowBetaProtocolVersions() {
+    public boolean allowsBetaProtocolVersions() {
         return this.useBeta;
     }
 }
