@@ -24,10 +24,15 @@ import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import static java.util.concurrent.TimeUnit.DAYS;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 /**
  * A stateless web UI that displays paginated results for a CQL query.
@@ -65,12 +70,12 @@ public class ForwardPagingWebUi {
             populateSchema(session);
 
             HttpServer server = HttpServer.create(new InetSocketAddress(HTTP_PORT), 0);
-            server.createContext("/users", new UsersHandler(session));
+            server.createContext("/videos", new VideosHandler(session));
             ExecutorService executor = Executors.newSingleThreadExecutor();
             server.setExecutor(executor);
             server.start();
 
-            System.out.printf("Service started on http://localhost:%d/users, press Enter key to stop%n", HTTP_PORT);
+            System.out.printf("Service started on http://localhost:%d/videos, press Enter key to stop%n", HTTP_PORT);
             System.in.read();
             System.out.println("Stopping");
 
@@ -85,26 +90,33 @@ public class ForwardPagingWebUi {
         session.execute("CREATE KEYSPACE IF NOT EXISTS examples " +
                 "WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}");
         session.execute("CREATE TABLE IF NOT EXISTS examples.forward_paging_web_ui(" +
-                "id int PRIMARY KEY, name text)");
+                "user_id int, " +
+                "added timestamp, " +
+                "video_id int, title text, " +
+                "PRIMARY KEY (user_id, added, video_id)" +
+                ") WITH CLUSTERING ORDER BY (added DESC, video_id ASC)");
     }
 
-    private static void populateSchema(Session session) {
+    private static void populateSchema(Session session) throws Exception {
+        long firstAdded = new SimpleDateFormat(DATE_FORMAT).parse("2016-06-01").getTime();
         for (int i = 0; i < 100; i++) {
-            session.execute("INSERT INTO examples.forward_paging_web_ui (id, name) VALUES (?, ?)",
-                    i, "user" + i);
+            Date added = new Date(firstAdded + MILLISECONDS.convert(i, DAYS));
+            session.execute("INSERT INTO examples.forward_paging_web_ui (user_id, added, video_id, title) " +
+                            "VALUES (0, ?, ?, ?)",
+                    added, i, "video " + i);
         }
     }
 
     /**
-     * Handles requests to /users[?page=xxx]
+     * Handles requests to /videos[?page=xxx]
      */
-    static class UsersHandler implements HttpHandler {
+    static class VideosHandler implements HttpHandler {
         private final Session session;
-        private final PreparedStatement selectUsers;
+        private final PreparedStatement selectVideos;
 
-        UsersHandler(Session session) {
+        VideosHandler(Session session) {
             this.session = session;
-            this.selectUsers = session.prepare("SELECT * FROM examples.forward_paging_web_ui");
+            this.selectVideos = session.prepare("SELECT added, video_id, title FROM examples.forward_paging_web_ui WHERE user_id = 0");
         }
 
         @Override
@@ -112,7 +124,7 @@ public class ForwardPagingWebUi {
             try {
                 StringBuilder response = new StringBuilder();
 
-                Statement statement = selectUsers.bind().setFetchSize(ITEMS_PER_PAGE);
+                Statement statement = selectVideos.bind().setFetchSize(ITEMS_PER_PAGE);
                 String currentState = extractPagingStateFromQueryString(httpExchange);
                 if (currentState != null) {
                     statement.setPagingState(PagingState.fromString(currentState));
@@ -128,8 +140,9 @@ public class ForwardPagingWebUi {
                     renderNoResults(response);
                 } else {
                     renderTableHeader(response);
+                    SimpleDateFormat dateFormat = new SimpleDateFormat(DATE_FORMAT);
                     for (Row row : rs) {
-                        renderTr(response, row.getInt("id"), row.getString("name"));
+                        renderTr(response, row.getInt("video_id"), row.getString("title"), dateFormat.format(row.getTimestamp("added")));
                         // Make sure we don't go past the current page (we don't want the driver to fetch the next one)
                         if (--remaining == 0)
                             break;
@@ -177,14 +190,16 @@ public class ForwardPagingWebUi {
                     .append("tr:nth-child(even) { background-color: lightgray }")
                     .append("td { padding: 0 30px 0 30px }")
                     .append("</style>")
-                    .append("<table><tr><th>Id</th><th>Name</th></tr>");
+                    .append("<table><tr><th>Id</th><th>Title</th><th>Added</th></tr>");
         }
 
-        private void renderTr(StringBuilder response, int id, String name) {
+        private void renderTr(StringBuilder response, int id, String title, String added) {
             response.append("<tr><td>")
                     .append(id)
                     .append("</td><td>")
-                    .append(name)
+                    .append(title)
+                    .append("</td><td>")
+                    .append(added)
                     .append("</td></tr>");
         }
 
@@ -193,7 +208,7 @@ public class ForwardPagingWebUi {
         }
 
         private void renderNextPageLink(StringBuilder response, String nextPage) {
-            response.append(String.format("<a href=\"/users?page=%s\">Next</a>", nextPage));
+            response.append(String.format("<a href=\"/videos?page=%s\">Next</a>", nextPage));
         }
 
         private static void reply(HttpExchange httpExchange, int status, String body) throws IOException {
@@ -204,4 +219,6 @@ public class ForwardPagingWebUi {
             os.close();
         }
     }
+
+    private static final String DATE_FORMAT = "yyyy-MM-dd";
 }
