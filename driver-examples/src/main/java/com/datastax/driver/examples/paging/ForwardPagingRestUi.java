@@ -16,13 +16,12 @@
 package com.datastax.driver.examples.paging;
 
 import com.datastax.driver.core.*;
-import org.glassfish.grizzly.http.server.HttpServer;
+import com.sun.net.httpserver.HttpServer;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
-import org.glassfish.jersey.grizzly2.httpserver.GrizzlyHttpServerFactory;
+import org.glassfish.jersey.jdkhttp.JdkHttpServerFactory;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.slf4j.bridge.SLF4JBridgeHandler;
 
 import javax.annotation.PostConstruct;
 import javax.inject.Inject;
@@ -36,12 +35,14 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * A stateless REST service (backed by
  * <a href="https://jersey.java.net/">Jersey</a>,
  * <a href="https://hk2.java.net/">HK2</a> and
- * <a href="https://grizzly.java.net/">Grizzly</a>) that displays paginated results for a CQL query.
+ * the JDK HttpServer) that displays paginated results for a CQL query.
  * <p/>
  * Conversion to and from JSON is made through
  * <a href="https://jersey.java.net/documentation/latest/media.html#json.jackson">Jersey Jackson providers</a>.
@@ -73,11 +74,9 @@ public class ForwardPagingRestUi {
 
     static final int ITEMS_PER_PAGE = 10;
 
-    static final URI BASE_URI = UriBuilder.fromUri("http://localhost").port(HTTP_PORT).build();
+    static final URI BASE_URI = UriBuilder.fromUri("http://localhost/").path("").port(HTTP_PORT).build();
 
     public static void main(String[] args) throws Exception {
-
-        configureLogging();
 
         Cluster cluster = null;
         try {
@@ -91,20 +90,10 @@ public class ForwardPagingRestUi {
             populateSchema(session);
             startRestService(session);
 
-            Thread.currentThread().join();
-
         } finally {
             if (cluster != null) cluster.close();
         }
 
-    }
-
-    // Grizzly uses JUL logging, while the driver uses SLF4J;
-    // here, for the sake of brevity,
-    // we are simply redirecting JUL logs to SLF4J.
-    private static void configureLogging() {
-        SLF4JBridgeHandler.removeHandlersForRootLogger();
-        SLF4JBridgeHandler.install();
     }
 
     // Creates a table storing videos by users, in a typically denormalized way
@@ -131,18 +120,32 @@ public class ForwardPagingRestUi {
         }
     }
 
+    // starts the REST server using JDK HttpServer (com.sun.net.httpserver.HttpServer)
     private static void startRestService(Session session) throws IOException, InterruptedException {
-        final HttpServer server = GrizzlyHttpServerFactory.createHttpServer(BASE_URI, new VideoApplication(session), false);
+
+        final HttpServer server = JdkHttpServerFactory.createHttpServer(BASE_URI, new VideoApplication(session), false);
+        final ExecutorService executor = Executors.newSingleThreadExecutor();
+        server.setExecutor(executor);
         Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
             @Override
             public void run() {
-                server.shutdownNow();
+                System.out.println();
+                System.out.println("Stopping REST Service");
+                server.stop(0);
+                executor.shutdownNow();
+                System.out.println("REST Service stopped");
             }
         }));
         server.start();
-        LOGGER.info("REST Service started, stop using CTRL+C");
-        LOGGER.info("Start with the following request and walk from there:");
-        LOGGER.info("curl -i http://localhost:{}/users/1/videos", HTTP_PORT);
+
+        System.out.println();
+        System.out.printf("REST Service started on http://localhost:%d/users, press CTRL+C to stop%n", HTTP_PORT);
+        System.out.println("To explore this example, start with the following request and walk from there:");
+        System.out.printf("curl -i http://localhost:%d/users/1/videos%n", HTTP_PORT);
+        System.out.println();
+
+        Thread.currentThread().join();
+
     }
 
     /**

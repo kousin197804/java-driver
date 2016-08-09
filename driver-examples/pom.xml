@@ -115,33 +115,18 @@
 
         <dependency>
             <groupId>org.glassfish.jersey.containers</groupId>
-            <artifactId>jersey-container-grizzly2-http</artifactId>
+            <artifactId>jersey-container-jdk-http</artifactId>
             <version>${jersey.version}</version>
             <optional>true</optional>
         </dependency>
 
-        <!--CDI frameworks (HK2)-->
 
-        <dependency>
-            <groupId>javax.inject</groupId>
-            <artifactId>javax.inject</artifactId>
-            <version>1</version>
-            <optional>true</optional>
-        </dependency>
+        <!--CDI frameworks (HK2)-->
 
         <dependency>
             <groupId>org.glassfish.hk2</groupId>
             <artifactId>hk2-api</artifactId>
             <version>${hk2.version}</version>
-            <optional>true</optional>
-        </dependency>
-
-        <!--Grizzly-->
-
-        <dependency>
-            <groupId>org.glassfish.grizzly</groupId>
-            <artifactId>grizzly-http-server</artifactId>
-            <version>${grizzly.version}</version>
             <optional>true</optional>
         </dependency>
 
@@ -151,13 +136,6 @@
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
             <version>${logback.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>jul-to-slf4j</artifactId>
-            <version>1.7.6</version>
-            <optional>true</optional>
         </dependency>
 
     </dependencies>
