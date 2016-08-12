@@ -15,9 +15,7 @@
  */
 package com.datastax.driver.core;
 
-import com.google.common.util.concurrent.AbstractFuture;
-import com.google.common.util.concurrent.FutureCallback;
-import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.*;
 
 import java.util.List;
 
@@ -66,12 +64,18 @@ public abstract class CloseFuture extends AbstractFuture<Void> {
     // Internal utility for cases where we want to build a future that wait on other ones
     static class Forwarding extends CloseFuture {
 
-        private final List<CloseFuture> futures;
+        private final SettableFuture<Void> forced = SettableFuture.create();
 
-        Forwarding(List<CloseFuture> futures) {
-            this.futures = futures;
+        Forwarding() {
+        }
 
-            Futures.addCallback(Futures.allAsList(futures), new FutureCallback<List<Void>>() {
+        Forwarding(List<CloseFuture> dependencies) {
+            setDependencies(dependencies);
+        }
+
+        void setDependencies(final List<CloseFuture> dependencies) {
+            // Complete this future when dependencies do
+            Futures.addCallback(Futures.allAsList(dependencies), new FutureCallback<List<Void>>() {
                 @Override
                 public void onFailure(Throwable t) {
                     Forwarding.this.setException(t);
@@ -82,12 +86,20 @@ public abstract class CloseFuture extends AbstractFuture<Void> {
                     Forwarding.this.onFuturesDone();
                 }
             });
+
+            // Force dependencies when this future is forced (which might have already happened)
+            forced.addListener(new Runnable() {
+                @Override
+                public void run() {
+                    for (CloseFuture dependency : dependencies)
+                        dependency.force();
+                }
+            }, MoreExecutors.sameThreadExecutor());
         }
 
         @Override
         public CloseFuture force() {
-            for (CloseFuture future : futures)
-                future.force();
+            forced.set(null);
             return this;
         }
 
