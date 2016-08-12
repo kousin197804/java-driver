@@ -1434,8 +1434,6 @@ public class Cluster implements Closeable {
                 }
             };
 
-            this.scheduledTasksExecutor.scheduleWithFixedDelay(new CleanupIdleConnectionsTask(), 10, 10, TimeUnit.SECONDS);
-
             for (InetSocketAddress address : contactPoints) {
                 // We don't want to signal -- call onAdd() -- because nothing is ready
                 // yet (loadbalancing policy, control connection, ...). All we want is
@@ -2534,20 +2532,6 @@ public class Cluster implements Closeable {
                         }
                     }
                 }).start();
-            }
-        }
-
-        private class CleanupIdleConnectionsTask implements Runnable {
-            @Override
-            public void run() {
-                try {
-                    long now = System.currentTimeMillis();
-                    for (SessionManager session : sessions) {
-                        session.cleanupIdleConnections(now);
-                    }
-                } catch (Exception e) {
-                    logger.warn("Error while trashing idle connections", e);
-                }
             }
         }
 

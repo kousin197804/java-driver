@@ -67,7 +67,7 @@ public class AsyncQueryTest extends CCMTestsSupport {
 
         HostConnectionPool pool = getPool(session());
         for (Connection connection : pool.connections) {
-            assertEquals(connection.inFlight.get(), 0);
+            assertEquals(connection.inFlight, 0);
         }
     }
 

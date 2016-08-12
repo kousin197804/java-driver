@@ -659,12 +659,6 @@ class SessionManager extends AbstractSession {
         return future;
     }
 
-    void cleanupIdleConnections(long now) {
-        for (HostConnectionPool pool : pools.values()) {
-            pool.cleanupIdleConnections(now);
-        }
-    }
-
     @Override
     protected void checkNotInEventLoop() {
         Connection.Factory connectionFactory = cluster.manager.connectionFactory;
@@ -711,7 +705,7 @@ class SessionManager extends AbstractSession {
                 }
 
                 openConnections[i] = p.opened();
-                inFlightQueries[i] = p.totalInFlight.get();
+                inFlightQueries[i] = p.totalInFlight();
                 trashedConnections[i] = p.trashed();
                 i++;
             }

@@ -19,6 +19,7 @@ import com.datastax.driver.core.Responses.Result.SetKeyspace;
 import com.datastax.driver.core.exceptions.*;
 import com.datastax.driver.core.utils.MoreFutures;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Objects;
 import com.google.common.collect.Lists;
 import com.google.common.collect.MapMaker;
 import com.google.common.util.concurrent.*;
@@ -64,10 +65,6 @@ class Connection {
 
     private static final boolean DISABLE_COALESCING = SystemProperties.getBoolean("com.datastax.driver.DISABLE_COALESCING", false);
 
-    enum State {OPEN, TRASHED, RESURRECTING, GONE}
-
-    final AtomicReference<State> state = new AtomicReference<State>(State.OPEN);
-
     volatile long maxIdleTime;
 
     final InetSocketAddress address;
@@ -80,8 +77,9 @@ class Connection {
     @VisibleForTesting
     final Dispatcher dispatcher;
 
-    // Used by connection pooling to count how many requests are "in flight" on that connection.
-    final AtomicInteger inFlight = new AtomicInteger(0);
+    // Used by connection pooling to count how many requests are "in flight" on that connection. volatile is good enough
+    // because this is always updated by the same thread (see HostConnectionPool)
+    volatile int inFlight;
 
     private final AtomicInteger writer = new AtomicInteger(0);
     private volatile String keyspace;
@@ -469,6 +467,10 @@ class Connection {
     }
 
     ListenableFuture<Void> setKeyspaceAsync(final String keyspace) throws ConnectionException, BusyConnectionException {
+        if (Objects.equal(this.keyspace, keyspace)) {
+            return MoreFutures.VOID_SUCCESS;
+        }
+
         logger.trace("{} Setting keyspace {}", this, keyspace);
         // Note: we quote the keyspace below, because the name is the one coming from Cassandra, so it's in the right case already
         Future future = write(new Requests.Query("USE \"" + keyspace + '"'));
@@ -678,7 +680,7 @@ class Connection {
 
     @Override
     public String toString() {
-        return String.format("Connection[%s, inFlight=%d, closed=%b]", name, inFlight.get(), isClosed());
+        return String.format("Connection[%s, inFlight=%d, closed=%b]", name, inFlight, isClosed());
     }
 
     static class Factory {
@@ -743,22 +745,13 @@ class Connection {
         }
 
         /**
-         * Same as open, but associate the created connection to the provided connection pool.
+         * Creates a new connection and associates it to the provided connection pool, but does not start it
          */
-        Connection open(HostConnectionPool pool) throws ConnectionException, InterruptedException, UnsupportedProtocolVersionException, ClusterNameMismatchException {
+        Connection newConnection(HostConnectionPool pool) {
             pool.host.convictionPolicy.signalConnectionsOpening(1);
-            Connection connection = new Connection(buildConnectionName(pool.host), pool.host.getSocketAddress(), this, pool);
-            try {
-                connection.initAsync().get();
-                return connection;
-            } catch (ExecutionException e) {
-                throw launderAsyncInitException(e);
-            }
+            return new Connection(buildConnectionName(pool.host), pool.host.getSocketAddress(), this, pool);
         }
 
-        /**
-         * Creates new connections and associate them to the provided connection pool, but does not start them.
-         */
         List<Connection> newConnections(HostConnectionPool pool, int count) {
             pool.host.convictionPolicy.signalConnectionsOpening(count);
             List<Connection> connections = Lists.newArrayListWithCapacity(count);
