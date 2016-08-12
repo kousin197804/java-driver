@@ -15,8 +15,6 @@
  */
 package com.datastax.driver.core;
 
-import com.datastax.driver.core.exceptions.NoHostAvailableException;
-import com.datastax.driver.core.exceptions.UnsupportedProtocolVersionException;
 import org.testng.annotations.Test;
 
 import static com.datastax.driver.core.ProtocolVersion.V4;
@@ -44,8 +42,7 @@ public class ProtocolBetaVersionTest extends CCMTestsSupport {
         Cluster cluster = Cluster.builder()
                 .addContactPoints(getContactPoints())
                 .withPort(ccm().getBinaryPort())
-                .withProtocolVersion(V5)
-                .allowBetaProtocolVersions()
+                .allowBetaProtocolVersion()
                 .build();
         cluster.connect();
         assertThat(cluster.getConfiguration().getProtocolOptions().getProtocolVersion()).isEqualTo(V5);
@@ -58,7 +55,7 @@ public class ProtocolBetaVersionTest extends CCMTestsSupport {
                     .addContactPoints(getContactPoints())
                     .withPort(ccm().getBinaryPort())
                     .withProtocolVersion(V4)
-                    .allowBetaProtocolVersions()
+                    .allowBetaProtocolVersion()
                     .build();
             fail("Expected IllegalArgumentException");
         } catch (IllegalArgumentException e) {
@@ -75,18 +72,36 @@ public class ProtocolBetaVersionTest extends CCMTestsSupport {
      */
     @Test(groups = "short")
     public void should_not_connect_when_beta_version_explicitly_required_and_flag_not_set() throws Exception {
-        Cluster cluster = Cluster.builder()
-                .addContactPoints(getContactPoints())
-                .withPort(ccm().getBinaryPort())
-                .withProtocolVersion(V5) // version explicitly required -> no renegotiation
-                .build();
         try {
-            cluster.connect();
-            fail("Expected NoHostAvailableException");
-        } catch (NoHostAvailableException e) {
-            Throwable t = e.getErrors().values().iterator().next();
-            assertThat(t).isInstanceOf(UnsupportedProtocolVersionException.class)
-                    .hasMessageContaining("Host does not support protocol version V5 but V4");
+            Cluster.builder()
+                    .addContactPoints(getContactPoints())
+                    .withPort(ccm().getBinaryPort())
+                    .withProtocolVersion(V5)
+                    .build();
+            fail("Expected IllegalArgumentException");
+        } catch (IllegalArgumentException e) {
+            assertThat(e.getMessage()).startsWith("Can not use V5 protocol version. Newest supported protocol version is: V4");
+        }
+    }
+
+    /**
+     * Verifies that the driver does not initialize a cluster instance when beta flag is set and
+     * user attempts to pass a version explicitly
+     *
+     * @jira_ticket JAVA-1248
+     */
+    @Test(groups = "short")
+    public void should_not_initialize_when_beta_flag_is_set_and_version_explicitly_required() throws Exception {
+        try {
+            Cluster.builder()
+                    .addContactPoints(getContactPoints())
+                    .withPort(ccm().getBinaryPort())
+                    .allowBetaProtocolVersion()
+                    .withProtocolVersion(V4)
+                    .build();
+            fail("Expected IllegalStateException");
+        } catch (IllegalStateException e) {
+            assertThat(e.getMessage()).isEqualTo("Can not set the version explicitly if `allowBetaProtocolVersion` was used.");
         }
     }
 
@@ -106,7 +121,7 @@ public class ProtocolBetaVersionTest extends CCMTestsSupport {
         Cluster cluster = Cluster.builder()
                 .addContactPoints(getContactPoints())
                 .withPort(ccm().getBinaryPort())
-                .allowBetaProtocolVersions()
+                .allowBetaProtocolVersion()
                 // no version explicitly required -> renegotiation allowed
                 .build();
         cluster.connect();

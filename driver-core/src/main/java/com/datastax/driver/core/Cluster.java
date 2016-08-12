@@ -690,7 +690,7 @@ public class Cluster implements Closeable {
         private SSLOptions sslOptions = null;
         private boolean metricsEnabled = true;
         private boolean jmxEnabled = true;
-        private boolean allowBetaProtocolVersions = false;
+        private boolean allowBetaProtocolVersion = false;
 
         private Collection<Host.StateListener> listeners;
 
@@ -745,7 +745,7 @@ public class Cluster implements Closeable {
         }
 
         /**
-         * Allows client to connect to server using latest development protocol version,
+         * Create cluster connection using latest development protocol version,
          * which is currently in beta. Calling this method will result into setting
          * USE_BETA flag in all outgoing messages, which allows server to negotiate
          * the supported protocol version even if it is currently in beta.
@@ -756,10 +756,12 @@ public class Cluster implements Closeable {
          * on latest protocol version.
          * @return this Builder.
          */
-        public Builder allowBetaProtocolVersions() {
-            if (protocolVersion != null && protocolVersion.toInt() < ProtocolVersion.V5.toInt())
+        public Builder allowBetaProtocolVersion() {
+            if (protocolVersion != null)
                 throw new IllegalArgumentException("Can't use beta flag with initial protocol version of " + protocolVersion);
-            this.allowBetaProtocolVersions = true;
+
+            this.allowBetaProtocolVersion = true;
+            this.protocolVersion = ProtocolVersion.NEWEST_BETA;
             return this;
         }
 
@@ -806,7 +808,7 @@ public class Cluster implements Closeable {
          * (the default), then the native protocol version 1 will be use for the lifetime
          * of the Cluster instance.
          * <p/>
-         * By using {@link Builder#allowBetaProtocolVersions()}, it is
+         * By using {@link Builder#allowBetaProtocolVersion()}, it is
          * possible to force driver to connect to Cassandra node that supports the latest
          * protocol beta version. Leaving this flag out will let client to connect with
          * latest released version.
@@ -835,6 +837,12 @@ public class Cluster implements Closeable {
          * @return this Builder.
          */
         public Builder withProtocolVersion(ProtocolVersion version) {
+            if (allowBetaProtocolVersion)
+                throw new IllegalStateException("Can not set the version explicitly if `allowBetaProtocolVersion` was used.");
+            if (version.toInt() > ProtocolVersion.NEWEST_SUPPORTED.toInt())
+                throw new IllegalArgumentException("Can not use " + version + " protocol version. " +
+                        "Newest supported protocol version is: " + ProtocolVersion.NEWEST_SUPPORTED + ". " +
+                        "For beta versions, use `allowBetaProtocolVersion` instead");
             this.protocolVersion = version;
             return this;
         }
@@ -1278,7 +1286,7 @@ public class Cluster implements Closeable {
          */
         @Override
         public Configuration getConfiguration() {
-            ProtocolOptions protocolOptions = new ProtocolOptions(port, protocolVersion, maxSchemaAgreementWaitSeconds, sslOptions, authProvider, allowBetaProtocolVersions)
+            ProtocolOptions protocolOptions = new ProtocolOptions(port, protocolVersion, maxSchemaAgreementWaitSeconds, sslOptions, authProvider)
                     .setCompression(compression);
 
             MetricsOptions metricsOptions = new MetricsOptions(metricsEnabled, jmxEnabled);

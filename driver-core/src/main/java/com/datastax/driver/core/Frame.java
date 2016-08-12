@@ -332,16 +332,4 @@ class Frame {
             }
         }
     }
-
-    @ChannelHandler.Sharable
-    static class BetaVersionFlagAdder extends MessageToMessageEncoder<Frame> {
-        @Override
-        protected void encode(ChannelHandlerContext ctx, Frame frame, List<Object> out) throws Exception {
-            ProtocolVersion protocolVersion = frame.header.version;
-            // Check for the protocol version, if the downgrade has occurred during renegotiation
-            if (protocolVersion.toInt() >= ProtocolVersion.V5.toInt())
-                frame.header.flags.add(Header.Flag.USE_BETA);
-            out.add(frame);
-        }
-    }
 }

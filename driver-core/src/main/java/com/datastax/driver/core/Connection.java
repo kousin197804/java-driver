@@ -131,7 +131,6 @@ class Connection {
             ProtocolOptions protocolOptions = factory.configuration.getProtocolOptions();
             bootstrap.handler(
                     new Initializer(this, protocolVersion,
-                            protocolOptions.allowsBetaProtocolVersions(),
                             protocolOptions.getCompression().compressor(),
                             protocolOptions.getSSLOptions(),
                             factory.configuration.getPoolingOptions().getHeartbeatIntervalSeconds(),
@@ -246,7 +245,7 @@ class Connection {
                         // Testing for a specific string is a tad fragile but well, we don't have much choice
                         // C* 2.1 reports a server error instead of protocol error, see CASSANDRA-9451
                         if ((error.code == ExceptionCode.PROTOCOL_ERROR || error.code == ExceptionCode.SERVER_ERROR) &&
-                                (error.message.contains("Invalid or unsupported protocol version") || error.message.contains("Beta version of the protocol used")))
+                                error.message.contains("Invalid or unsupported protocol version"))
                             throw unsupportedProtocolVersionException(protocolVersion, error.serverProtocolVersion);
                         throw new TransportException(address, String.format("Error initializing connection: %s", error.message));
                     case AUTHENTICATE:
@@ -1288,7 +1287,6 @@ class Connection {
         private static final Message.ProtocolEncoder messageEncoderV4 = new Message.ProtocolEncoder(ProtocolVersion.V4);
         private static final Message.ProtocolEncoder messageEncoderV5 = new Message.ProtocolEncoder(ProtocolVersion.V5);
         private static final Frame.Encoder frameEncoder = new Frame.Encoder();
-        private static final Frame.BetaVersionFlagAdder betaVersionFlagAdder = new Frame.BetaVersionFlagAdder();
 
         private final ProtocolVersion protocolVersion;
         private final Connection connection;
@@ -1297,16 +1295,14 @@ class Connection {
         private final NettyOptions nettyOptions;
         private final ChannelHandler idleStateHandler;
         private final CodecRegistry codecRegistry;
-        private final boolean useBeta;
 
-        Initializer(Connection connection, ProtocolVersion protocolVersion, boolean useBeta, FrameCompressor compressor, SSLOptions sslOptions, int heartBeatIntervalSeconds, NettyOptions nettyOptions, CodecRegistry codecRegistry) {
+        Initializer(Connection connection, ProtocolVersion protocolVersion, FrameCompressor compressor, SSLOptions sslOptions, int heartBeatIntervalSeconds, NettyOptions nettyOptions, CodecRegistry codecRegistry) {
             this.connection = connection;
             this.protocolVersion = protocolVersion;
             this.compressor = compressor;
             this.sslOptions = sslOptions;
             this.nettyOptions = nettyOptions;
             this.codecRegistry = codecRegistry;
-            this.useBeta = useBeta;
             this.idleStateHandler = new IdleStateHandler(0, 0, heartBeatIntervalSeconds);
         }
 
@@ -1326,10 +1322,6 @@ class Connection {
 
             pipeline.addLast("frameDecoder", new Frame.Decoder());
             pipeline.addLast("frameEncoder", frameEncoder);
-
-            if (useBeta) {
-                pipeline.addLast("betaFlagAdder", betaVersionFlagAdder);
-            }
 
             if (compressor != null) {
                 pipeline.addLast("frameDecompressor", new Frame.Decompressor(compressor));
