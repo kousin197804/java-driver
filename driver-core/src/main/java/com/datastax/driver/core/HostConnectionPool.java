@@ -30,7 +30,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -208,22 +207,7 @@ class HostConnectionPool implements Connection.Owner {
         return manager.configuration().getPoolingOptions();
     }
 
-    /**
-     * TODO make all client use the async version and remove this one
-     */
-    @Deprecated
-    Connection borrowConnection(long timeout, TimeUnit unit) throws ConnectionException, TimeoutException {
-        try {
-            return Uninterruptibles.getUninterruptibly(borrowConnectionAsync(timeout, unit));
-        } catch (ExecutionException e) {
-            Throwable cause = e.getCause();
-            Throwables.propagateIfInstanceOf(cause, ConnectionException.class);
-            Throwables.propagateIfInstanceOf(cause, TimeoutException.class);
-            throw Throwables.propagate(cause);
-        }
-    }
-
-    ListenableFuture<Connection> borrowConnectionAsync(final long timeout, final TimeUnit unit) {
+    ListenableFuture<Connection> borrowConnection(final long timeout, final TimeUnit unit) {
         final SettableFuture<Connection> borrowFuture = SettableFuture.create();
         if (executor.inEventLoop()) {
             confinedBorrow(timeout, unit, borrowFuture);
