@@ -188,7 +188,7 @@ class HostConnectionPool implements Connection.Owner {
         return manager.configuration().getPoolingOptions();
     }
 
-    public ListenableFuture<Connection> borrowConnection(long timeout, TimeUnit unit) throws ConnectionException, TimeoutException {
+    public ListenableFuture<Connection> borrowConnection(long timeout, TimeUnit unit) {
         Phase phase = this.phase.get();
         if (phase != Phase.READY)
             return Futures.immediateFailedFuture(new ConnectionException(host.getSocketAddress(), "Pool is " + phase));

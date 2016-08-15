@@ -1075,7 +1075,11 @@ public class HostConnectionPoolTest extends ScassandraTestBase.PerClassCluster {
         }
 
         private MockRequest(HostConnectionPool pool) throws ConnectionException, TimeoutException, BusyConnectionException {
-            connection = pool.borrowConnection(500, TimeUnit.MILLISECONDS);
+            try {
+                connection = Uninterruptibles.getUninterruptibly(pool.borrowConnection(500, TimeUnit.MILLISECONDS));
+            } catch (ExecutionException e) {
+                throw new AssertionError(e.getCause());
+            }
         }
 
         void simulateSuccessResponse() {
