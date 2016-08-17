@@ -75,7 +75,7 @@ class HostConnectionPool implements Connection.Owner {
     private volatile int trashSize;
     private volatile int totalInFlight;
 
-    protected final AtomicReference<CloseFuture> closeFuture = new AtomicReference<CloseFuture>();
+    private final AtomicReference<CloseFuture> closeFuture = new AtomicReference<CloseFuture>();
 
     // When a request times out, we may never release its stream ID. So over time, a given connection
     // may get less an less available streams. When the number of available ones go below the
@@ -262,7 +262,7 @@ class HostConnectionPool implements Connection.Owner {
             borrowFuture.setException(new TimeoutException("No connection immediately available and pool timeout is 0"));
         } else {
             pendingBorrowQueue.offer(
-                    new BorrowTask(borrowFuture, TimeUnit.NANOSECONDS.convert(timeout, unit)));
+                    new BorrowTask(borrowFuture, timeout, unit));
         }
     }
 
@@ -381,13 +381,15 @@ class HostConnectionPool implements Connection.Owner {
     private void dequeuePendingBorrows(Connection connection) {
         assert executor.inEventLoop();
 
-        while (connection.inFlight < connection.maxAvailableStreams()) {
-            BorrowTask borrowTask = pendingBorrowQueue.poll();
-            if (borrowTask == null)
-                break;
-
-            borrowTask.timeoutFuture.cancel(false);
-            onBorrowed(borrowTask.future, connection);
+        BorrowTask borrowTask;
+        while ((borrowTask = pendingBorrowQueue.poll()) != null
+                && connection.inFlight < connection.maxAvailableStreams()) {
+            // Timed out tasks remain in the queue, simply discard them (the timeout callback also runs on executor so
+            // we don't need to worry about concurrency).
+            if (!borrowTask.timeoutFuture.isDone()) {
+                borrowTask.timeoutFuture.cancel(false);
+                onBorrowed(borrowTask.connectionFuture, connection);
+            }
         }
     }
 
@@ -463,33 +465,24 @@ class HostConnectionPool implements Connection.Owner {
         }
     }
 
-    private class BorrowTask {
-        private final SettableFuture<Connection> future;
-        private final long expireNanoTime;
-        private final ScheduledFuture<?> timeoutFuture;
+    private class BorrowTask implements Runnable {
+        final SettableFuture<Connection> connectionFuture;
+        final ScheduledFuture<?> timeoutFuture;
 
-        BorrowTask(SettableFuture<Connection> future, long timeout) {
-            this.future = future;
-            this.expireNanoTime = System.nanoTime() + timeout;
-            this.timeoutFuture = executor.schedule(timeoutTask, timeout, TimeUnit.NANOSECONDS);
+        BorrowTask(SettableFuture<Connection> connectionFuture, long timeout, TimeUnit unit) {
+            this.connectionFuture = connectionFuture;
+            this.timeoutFuture = executor.schedule(this, timeout, unit);
         }
 
-        private Runnable timeoutTask = new Runnable() {
-            @Override
-            public void run() {
-                assert executor.inEventLoop();
-                long now = System.nanoTime();
-                while (true) {
-                    BorrowTask task = pendingBorrowQueue.peek();
-                    if (task == null || task.expireNanoTime > now) {
-                        break;
-                    }
-                    pendingBorrowQueue.remove();
-                    task.timeoutFuture.cancel(false);
-                    task.future.setException(new TimeoutException("Could not acquire connection within the given timeout"));
-                }
-            }
-        };
+        @Override
+        public void run() {
+            onTimeout();
+        }
+
+        private void onTimeout() {
+            assert executor.inEventLoop();
+            connectionFuture.setException(new TimeoutException("Could not acquire connection within the given timeout"));
+        }
     }
 
     private class CleanupTask implements Runnable {
@@ -593,7 +586,7 @@ class HostConnectionPool implements Connection.Owner {
         BorrowTask borrowTask;
         while ((borrowTask = pendingBorrowQueue.poll()) != null) {
             borrowTask.timeoutFuture.cancel(false);
-            borrowTask.future.setException(new ConnectionException(host.getSocketAddress(), "Pool is " + phase));
+            borrowTask.connectionFuture.setException(new ConnectionException(host.getSocketAddress(), "Pool is " + phase));
         }
 
         forwardingFuture.setDependencies(discardAvailableConnections());
