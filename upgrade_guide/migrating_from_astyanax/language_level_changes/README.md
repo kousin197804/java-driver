@@ -2,7 +2,7 @@
 The data model changes when using *CQL* (Cassandra Query Language).
 *CQL* is providing an abstraction of the low-level data stored in *Cassandra*, in
 opposition to *Thrift* that aims to expose the low-level data structure directly.
-[But note that this tends to change with Cassandra 3’s new storage engine.][STORAGEENGINE30-POST-LINK]
+[But note that this changes with Cassandra 3’s new storage engine.](http://www.datastax.com/2015/12/storage-engine-30)
 
 *Thrift* exposes *Keyspaces*, and these *Keyspaces* contain *Column Families*. A
 *ColumnFamily* contains *Rows* in which each *Row* has a list of an arbitrary number
@@ -70,6 +70,6 @@ composing the *Clustering ColumnKey*).
 
 Here is the basic architectural concept of *CQL*, this post will not dive more
 into describing the *CQL* language, however a detailed explanation and *CQL*
-examples can be found in this article :  http://www.planetcassandra.org/making-the-change-from-thrift-to-cql/. 
+examples can be found in this article : [http://www.planetcassandra.org/making-the-change-from-thrift-to-cql/].
 Understanding the *CQL* abstraction plays a key role in developing performing
 and scaling applications.

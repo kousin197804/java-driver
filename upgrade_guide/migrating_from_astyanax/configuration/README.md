@@ -123,11 +123,11 @@ query needs to have the *Row key* specified explicitly on a `Statement` in order
 to benefit from the *TokenAware* routing (the *Row key* in the *Java driver* is 
 referenced as *Routing Key*), unlike the *Astyanax* driver. 
 Some differences occur related to the different kinds of `Statements` the *Java
-driver* provides. Please see [DOC-LINK] for specific information.
+driver* provides. Please see [this link](../../../manual/statements) for specific information.
 
 Custom load balancing policies can easily be implemented by users, and supplied to 
-the *Java driver* for specific use cases. All information necessary if available
-in the Load balaning policies docs. [DOC-LINK]
+the *Java driver* for specific use cases. All information necessary is available
+in the [Load balaning policies docs](../../../manual/load_balancing).
 
 ## Consistency levels
 Consistency levels can be set per-statement, or globally through the `QueryOptions`.
@@ -155,7 +155,7 @@ Level can be set per-statement, you can either set it on every statement, or use
 this case, setting the CL on the `PreparedStatement`, causes the `BoundStatements` to 
 inherit the CL from the prepared statements they were prepared from. More
 informations about how `Statement`s work in the *Java driver* are detailed
-in the “Queries and Result” section [DOC-LINK].
+in the [“Queries and Result” section](../queries_and_results/).
 
 
 ## Authentication
@@ -179,7 +179,7 @@ AuthProvider authProvider = new PlainTextAuthProvider("username", "password");
 ```
 
 The class `AuthProvider` can be easily implemented to suit the user’s needs,
-documentation about the classes needed is available there [DOC-LINK].
+documentation about the classes needed is [available there](../../../manual/auth/).
 
 ## Hosts and ports
 
@@ -229,14 +229,14 @@ Session session = cluster.connect();
 
 ## Best Practices
 
-A few best practices are summed up there : [ALEXP-POST-LINK]
+A few best practices are summed up in [this blog post](http://www.datastax.com/dev/blog/4-simple-rules-when-using-the-datastax-drivers-for-cassandra).
 
 Concerning connection pools, the Java driver’s default settings should allow 
 most of the users to get the best out of the driver in terms of throughput, 
 they have been thoroughly tested and tweaked to accommodate the users’ needs. 
-If one still wishes to change those, first Monitoring the pools first is 
-advised [DOC-LINK], then a deep dive in the Pools management mechanism should 
-provide enough insight [DOC-LINK].
+If one still wishes to change those, first [Monitoring the pools](../../../manual/pooling/#monitoring-and-tuning-the-pool) is
+advised, then a [deep dive in the Pools management mechanism](../../../manual/pooling/) should
+provide enough insight.
 
 A lot more options are available in the different `XxxxOption`s classes, policies are
 also highly customizable since the base drivers implementations can easily be 
