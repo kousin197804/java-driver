@@ -25,6 +25,7 @@ import com.google.common.base.Strings;
 import com.google.common.base.Throwables;
 import com.google.common.collect.*;
 import com.google.common.util.concurrent.*;
+import io.netty.util.concurrent.DefaultThreadFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -1542,7 +1543,10 @@ public class Cluster implements Closeable {
         }
 
         ThreadFactory threadFactory(String name) {
-            return new ThreadFactoryBuilder().setNameFormat(clusterName + "-" + name + "-%d").build();
+            return new ThreadFactoryBuilder()
+                    .setNameFormat(clusterName + "-" + name + "-%d")
+                    .setThreadFactory(new DefaultThreadFactory("ignored"))
+                    .build();
         }
 
         private ListeningExecutorService makeExecutor(int threads, String name, LinkedBlockingQueue<Runnable> workQueue) {
