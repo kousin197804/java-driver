@@ -26,16 +26,10 @@ import com.google.common.util.concurrent.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.ListIterator;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.Condition;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 import static com.datastax.driver.core.Connection.State.*;
 
@@ -62,9 +56,7 @@ class HostConnectionPool implements Connection.Owner {
     @VisibleForTesting
     final Set<Connection> trash = new CopyOnWriteArraySet<Connection>();
 
-    private volatile int waiter = 0;
-    private final Lock waitLock = new ReentrantLock(true);
-    private final Condition hasAvailableConnection = waitLock.newCondition();
+    private final Queue<SettableFuture<Connection>> pendingBorrows = new ConcurrentLinkedQueue<SettableFuture<Connection>>();
 
     private final Runnable newConnectionTask;
 
@@ -196,17 +188,13 @@ class HostConnectionPool implements Connection.Owner {
         return manager.configuration().getPoolingOptions();
     }
 
-    public Connection borrowConnection(long timeout, TimeUnit unit) throws ConnectionException, TimeoutException {
+    public ListenableFuture<Connection> borrowConnection(long timeout, TimeUnit unit) throws ConnectionException, TimeoutException {
         Phase phase = this.phase.get();
         if (phase != Phase.READY)
-            // Note: throwing a ConnectionException is probably fine in practice as it will trigger the creation of a new host.
-            // That being said, maybe having a specific exception could be cleaner.
-            throw new ConnectionException(host.getSocketAddress(), "Pool is " + phase);
+            return Futures.immediateFailedFuture(new ConnectionException(host.getSocketAddress(), "Pool is " + phase));
 
         if (connections.isEmpty()) {
-            if (!host.convictionPolicy.canReconnectNow())
-                throw new TimeoutException("Connection pool is empty, currently trying to reestablish connections");
-            else {
+            if (host.convictionPolicy.canReconnectNow()) {
                 int coreSize = options().getCoreConnectionsPerHost(hostDistance);
                 if (coreSize == 0) {
                     maybeSpawnNewConnection();
@@ -218,10 +206,7 @@ class HostConnectionPool implements Connection.Owner {
                         manager.blockingExecutor().submit(newConnectionTask);
                     }
                 }
-                Connection c = waitForConnection(timeout, unit);
-                totalInFlight.incrementAndGet();
-                c.setKeyspace(manager.poolsState.keyspace);
-                return c;
+                return enqueue();
             }
         }
 
@@ -238,18 +223,17 @@ class HostConnectionPool implements Connection.Owner {
         if (leastBusy == null) {
             // We could have raced with a shutdown since the last check
             if (isClosed())
-                throw new ConnectionException(host.getSocketAddress(), "Pool is shutdown");
+                return Futures.immediateFailedFuture(new ConnectionException(host.getSocketAddress(), "Pool is shutdown"));
             // This might maybe happen if the number of core connections per host is 0 and a connection was trashed between
             // the previous check to connections and now. But in that case, the line above will have trigger the creation of
             // a new connection, so just wait that connection and move on
-            leastBusy = waitForConnection(timeout, unit);
+            return enqueue();
         } else {
             while (true) {
                 int inFlight = leastBusy.inFlight.get();
 
                 if (inFlight >= Math.min(leastBusy.maxAvailableStreams(), options().getMaxRequestsPerConnection(hostDistance))) {
-                    leastBusy = waitForConnection(timeout, unit);
-                    break;
+                    return enqueue();
                 }
 
                 if (leastBusy.inFlight.compareAndSet(inFlight, inFlight + 1))
@@ -276,93 +260,15 @@ class HostConnectionPool implements Connection.Owner {
                 maybeSpawnNewConnection();
         }
 
-        leastBusy.setKeyspace(manager.poolsState.keyspace);
-        return leastBusy;
+        return leastBusy.setKeyspaceAsync(manager.poolsState.keyspace);
     }
 
-    private void awaitAvailableConnection(long timeout, TimeUnit unit) throws InterruptedException {
-        waitLock.lock();
-        waiter++;
-        try {
-            hasAvailableConnection.await(timeout, unit);
-        } finally {
-            waiter--;
-            waitLock.unlock();
-        }
-    }
-
-    private void signalAvailableConnection() {
-        // Quick check if it's worth signaling to avoid locking
-        if (waiter == 0)
-            return;
-
-        waitLock.lock();
-        try {
-            hasAvailableConnection.signal();
-        } finally {
-            waitLock.unlock();
-        }
-    }
-
-    private void signalAllAvailableConnection() {
-        // Quick check if it's worth signaling to avoid locking
-        if (waiter == 0)
-            return;
-
-        waitLock.lock();
-        try {
-            hasAvailableConnection.signalAll();
-        } finally {
-            waitLock.unlock();
-        }
-    }
-
-    private Connection waitForConnection(long timeout, TimeUnit unit) throws ConnectionException, TimeoutException {
-        if (timeout == 0)
-            throw new TimeoutException("All connections are busy and pool timeout is 0");
-
-        long start = System.nanoTime();
-        long remaining = timeout;
-        do {
-            try {
-                awaitAvailableConnection(remaining, unit);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                // If we're interrupted fine, check if there is a connection available but stop waiting otherwise
-                timeout = 0; // this will make us stop the loop if we don't get a connection right away
-            }
-
-            if (isClosed())
-                throw new ConnectionException(host.getSocketAddress(), "Pool is shutdown");
-
-            int minInFlight = Integer.MAX_VALUE;
-            Connection leastBusy = null;
-            for (Connection connection : connections) {
-                int inFlight = connection.inFlight.get();
-                if (inFlight < minInFlight) {
-                    minInFlight = inFlight;
-                    leastBusy = connection;
-                }
-            }
-
-            // If we race with shutdown, leastBusy could be null. In that case we just loop and we'll throw on the next
-            // iteration anyway
-            if (leastBusy != null) {
-                while (true) {
-                    int inFlight = leastBusy.inFlight.get();
-
-                    if (inFlight >= Math.min(leastBusy.maxAvailableStreams(), options().getMaxRequestsPerConnection(hostDistance)))
-                        break;
-
-                    if (leastBusy.inFlight.compareAndSet(inFlight, inFlight + 1))
-                        return leastBusy;
-                }
-            }
-
-            remaining = timeout - Cluster.timeSince(start, unit);
-        } while (remaining > 0);
-
-        throw new TimeoutException("All connections are busy");
+    private ListenableFuture<Connection> enqueue() {
+        // TODO limit queue size
+        SettableFuture<Connection> future = SettableFuture.create();
+        pendingBorrows.add(future);
+        return future;
+        // TODO purge queue on shutdown
     }
 
     public void returnConnection(Connection connection) {
@@ -384,7 +290,31 @@ class HostConnectionPool implements Connection.Owner {
             if (connection.maxAvailableStreams() < minAllowedStreams) {
                 replaceConnection(connection);
             } else {
-                signalAvailableConnection();
+                dequeue(connection);
+            }
+        }
+    }
+
+    private void dequeue(Connection connection) {
+        while (!pendingBorrows.isEmpty()) {
+
+            // Try to acquire the right to use the connection
+            while (true) {
+                int inFlight = connection.inFlight.get();
+                if (inFlight >= Math.min(connection.maxAvailableStreams(), options().getMaxRequestsPerConnection(hostDistance))) {
+                    // Connection is full again, stop dequeuing
+                    return;
+                }
+                if (connection.inFlight.compareAndSet(inFlight, inFlight + 1))
+                    break;
+            }
+
+            SettableFuture<Connection> pendingBorrow = pendingBorrows.poll();
+            if (pendingBorrow == null) {
+                // Another thread has emptied the queue since our last check, restore the count
+                connection.inFlight.decrementAndGet();
+            } else {
+                pendingBorrow.set(connection);
             }
         }
     }
@@ -465,7 +395,7 @@ class HostConnectionPool implements Connection.Owner {
                 return false;
             }
 
-            signalAvailableConnection();
+            dequeue(newConnection);
             return true;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -612,8 +542,9 @@ class HostConnectionPool implements Connection.Owner {
 
         phase.set(Phase.CLOSING);
 
-        // Wake up all threads that wait
-        signalAllAvailableConnection();
+        for (SettableFuture<Connection> pendingBorrow : pendingBorrows) {
+            pendingBorrow.setException(new ConnectionException(host.getSocketAddress(), "Pool is shutdown"));
+        }
 
         future = new CloseFuture.Forwarding(discardAvailableConnections());
 
