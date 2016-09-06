@@ -1,5 +1,10 @@
 ## Changelog
 
+### 3.1.1 (in progress)
+
+- [bug] JAVA-1279: Mapper should exclude Groovy's "metaClass" property when looking for mapped properties
+
+
 ### 3.1.0
 
 - [new feature] JAVA-1153: Add PER PARTITION LIMIT to Select QueryBuilder.
