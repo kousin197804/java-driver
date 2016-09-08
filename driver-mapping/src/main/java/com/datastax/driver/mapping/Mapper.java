@@ -553,6 +553,13 @@ public class Mapper<T> {
         }
     }
 
+    /**
+     * Clear the cache for prepared statement
+     */
+    public void clearCache(){
+        preparedQueries.clear();
+    }
+
     private ListenableFuture<BoundStatement> deleteQueryAsync(T entity, EnumMap<Option.Type, Option> options) {
         List<Object> pks = new ArrayList<Object>();
         for (int i = 0; i < mapper.primaryKeySize(); i++) {

@@ -18,6 +18,7 @@ package com.datastax.driver.core;
 import com.datastax.driver.core.CCMAccess.Workload;
 import com.datastax.driver.core.CreateCCM.TestMode;
 import com.datastax.driver.core.exceptions.InvalidQueryException;
+import com.datastax.driver.core.policies.ConstantReconnectionPolicy;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
@@ -921,6 +922,7 @@ public class CCMTestsSupport {
             // add contact points only if the provided builder didn't do so
             if (builder.getContactPoints().isEmpty())
                 builder.addContactPoints(getContactPoints());
+            builder.withReconnectionPolicy(new ConstantReconnectionPolicy(1000));
             builder.withPort(ccm.getBinaryPort());
             cluster = register(builder.build());
             cluster.init();
