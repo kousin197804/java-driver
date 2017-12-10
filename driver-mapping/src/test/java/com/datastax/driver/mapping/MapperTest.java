@@ -29,10 +29,7 @@ import org.slf4j.LoggerFactory;
 import org.testng.annotations.Test;
 
 import java.net.InetAddress;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
 import static com.datastax.driver.core.ConsistencyLevel.ONE;
 import static com.datastax.driver.mapping.Mapper.Option.consistencyLevel;
@@ -534,6 +531,62 @@ public class MapperTest extends CCMTestsSupport {
 
         // cleanup
         session().execute("delete from posts where user_id = " + u1.getUserId());
+    }
+
+    @Test(groups = "short")
+    public void should_get_all_for_partial_keys(){
+        MappingManager manager = new MappingManager(session());
+
+        Mapper<Post> m = manager.mapper(Post.class);
+
+        User u1 = new User("Paul", "paul@gmail.com");
+
+        Post p1 = new Post(u1, "Something about mapping");
+        Post p2 = new Post(u1, "Something else");
+        Post p3 = new Post(u1, "Something more");
+
+        m.save(p1);
+        m.save(p2);
+        m.save(p3);
+
+        List<Post> result = m.getAll(u1.userId);
+        assertThat(result.size()).isEqualTo(3);
+        assertThat(result.get(0)).isEqualToComparingFieldByField(p1);
+        assertThat(result.get(1)).isEqualToComparingFieldByField(p2);
+        assertThat(result.get(2)).isEqualToComparingFieldByField(p3);
+
+        List<Post> singleResult = m.getAll(u1.userId, p1.getPostId());
+        assertThat(singleResult.size()).isEqualTo(1);
+        assertThat(singleResult.get(0)).isEqualToComparingFieldByField(p1);
+
+        // cleanup
+        session().execute("delete from posts where user_id = " + u1.getUserId());
+    }
+
+    @Test(groups = "short")
+    public void should_fail_when_partial_keys_num_is_not_correct() {
+        MappingManager manager = new MappingManager(session());
+
+        //this entity has 1 partition key and 1 primary key
+        Mapper<Post> m = manager.mapper(Post.class);
+
+        try{
+            m.getAll();
+            fail("Exception not thrown");
+        }catch(Exception e){
+            assertThat(e)
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("at least 1 and not more than 2");
+        }
+
+        try{
+            m.getAll(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+            fail("Exception not thrown");
+        }catch(Exception e){
+            assertThat(e)
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("at least 1 and not more than 2");
+        }
     }
 
     @Test(groups = "short")

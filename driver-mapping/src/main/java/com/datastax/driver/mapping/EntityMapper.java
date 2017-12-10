@@ -46,6 +46,10 @@ class EntityMapper<T> {
         return partitionKeys.size() + clusteringColumns.size();
     }
 
+    int partitionKeysSize() {
+        return partitionKeys.size();
+    }
+
     AliasedMappedProperty getPrimaryKeyColumn(int i) {
         return i < partitionKeys.size() ? partitionKeys.get(i) : clusteringColumns.get(i - partitionKeys.size());
     }

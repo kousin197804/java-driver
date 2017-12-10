@@ -68,7 +68,7 @@ enum QueryType {
                 select = selection.from(table);
             }
             Select.Where where = select.where();
-            for (int i = 0; i < mapper.primaryKeySize(); i++)
+            for (int i = 0; i < columns.size(); i++)
                 where.and(eq(mapper.getPrimaryKeyColumn(i).mappedProperty.getMappedName(), bindMarker()));
 
             for (Mapper.Option option : options) {

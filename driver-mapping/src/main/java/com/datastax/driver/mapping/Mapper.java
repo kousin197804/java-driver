@@ -66,6 +66,7 @@ public class Mapper<T> {
     private static final EnumMap<Option.Type, Option> NO_OPTIONS = new EnumMap<Option.Type, Option>(Option.Type.class);
 
     private final Function<ResultSet, T> mapOneFunction;
+    private final Function<ResultSet, List<T>> mapAllFunction;
     final Function<ResultSet, T> mapOneFunctionWithoutAliases;
     final Function<ResultSet, Result<T>> mapAllFunctionWithoutAliases;
 
@@ -83,6 +84,14 @@ public class Mapper<T> {
                 return Mapper.this.map(rs).one();
             }
         };
+
+        this.mapAllFunction = new Function<ResultSet, List<T>>() {
+            @Override
+            public List<T> apply(ResultSet rs) {
+                return Mapper.this.map(rs).all();
+            }
+        };
+
         this.mapOneFunctionWithoutAliases = new Function<ResultSet, T>() {
             @Override
             public T apply(ResultSet rs) {
@@ -371,20 +380,20 @@ public class Mapper<T> {
      *                the values for the columns of said primary key in the order of the primary key.
      *                Can be followed by {@link Option} to include in the DELETE query.
      * @return a query that fetch the entity of PRIMARY KEY {@code objects}.
-     * @throws IllegalArgumentException if the number of value provided differ from
-     *                                  the number of columns composing the PRIMARY KEY of the mapped class, or if
+     * @throws IllegalArgumentException if the number of value provided is fewer than the number of partition keys,
+     *                                  more than the number of primary keys, or if
      *                                  at least one of those values is {@code null}.
      */
     public Statement getQuery(Object... objects) {
         checkNotInEventLoop();
         try {
-            return Uninterruptibles.getUninterruptibly(getQueryAsync(objects));
+            return Uninterruptibles.getUninterruptibly(getQueryAsync(true, objects));
         } catch (ExecutionException e) {
             throw DriverThrowables.propagateCause(e);
         }
     }
 
-    private ListenableFuture<BoundStatement> getQueryAsync(Object... objects) {
+    private ListenableFuture<BoundStatement> getQueryAsync(boolean getMultiple, Object... objects) {
         // Order and duplicates matter for primary keys
         List<Object> pks = new ArrayList<Object>();
         EnumMap<Option.Type, Option> options = new EnumMap<Option.Type, Option>(defaultGetOptions);
@@ -396,14 +405,27 @@ public class Mapper<T> {
                 pks.add(o);
             }
         }
-        return getQueryAsync(pks, options);
+        return getQueryAsync(getMultiple, pks, options);
     }
 
-    private ListenableFuture<BoundStatement> getQueryAsync(final List<Object> primaryKeys, final EnumMap<Option.Type, Option> options) {
-        if (primaryKeys.size() != mapper.primaryKeySize())
-            throw new IllegalArgumentException(String.format("Invalid number of PRIMARY KEY columns provided, %d expected but got %d", mapper.primaryKeySize(), primaryKeys.size()));
+    private ListenableFuture<BoundStatement> getQueryAsync(boolean getMultiple, final List<Object> primaryKeys, final EnumMap<Option.Type, Option> options) {
+        int keySize = primaryKeys.size();
+        if (getMultiple) {
+            if (keySize < mapper.partitionKeysSize() || keySize > mapper.primaryKeySize()) {
+                throw new IllegalArgumentException(String.format("Invalid number of PRIMARY KEY columns provided, at least %d and not more than %d expected but got %d", mapper.partitionKeysSize(), mapper.primaryKeySize(), keySize));
+            }
+        } else {
+            if (keySize != mapper.primaryKeySize()) {
+                throw new IllegalArgumentException(String.format("Invalid number of PRIMARY KEY columns provided, %d expected but got %d", mapper.primaryKeySize(), keySize));
+            }
+        }
 
-        return Futures.transform(getPreparedQueryAsync(QueryType.GET, options), new Function<PreparedStatement, BoundStatement>() {
+        final Set<AliasedMappedProperty> queryCols = new LinkedHashSet<AliasedMappedProperty>(keySize);
+        for (int i = 0; i < primaryKeys.size(); i++) {
+            queryCols.add(mapper.getPrimaryKeyColumn(i));
+        }
+
+        return Futures.transform(getPreparedQueryAsync(QueryType.GET, queryCols, options), new Function<PreparedStatement, BoundStatement>() {
             @Override
             public BoundStatement apply(PreparedStatement input) {
                 BoundStatement bs = new MapperBoundStatement(input);
@@ -455,6 +477,29 @@ public class Mapper<T> {
     }
 
     /**
+     * Fetch a list of entity based on their primary key.
+     * <p/>
+     * This method is basically equivalent to: {@code map(getManager().getSession().execute(getQuery(objects))).all()}.
+     * <p/>
+     * Note: this method will block until the list of entities is fully fetched.
+     *
+     * @param objects the primary key of the entities to fetch, or more precisely
+     *                the values for the columns of said primary key in the order of the primary key.
+     * @return a list of entities that match the primary keys
+     * @throws IllegalArgumentException if the number of value provided is fewer than the number of partition keys,
+     *                                  more than the number of primary keys, or if
+     *                                  at least one of those values is {@code null}.
+     */
+    public List<T> getAll(Object... objects) {
+        checkNotInEventLoop();
+        try {
+            return Uninterruptibles.getUninterruptibly(getAllAsync(objects));
+        } catch (ExecutionException e) {
+            throw DriverThrowables.propagateCause(e);
+        }
+    }
+
+    /**
      * Fetch an entity based on its primary key asynchronously.
      * <p/>
      * This method is basically equivalent to mapping the result of: {@code getManager().getSession().executeAsync(getQuery(objects))}.
@@ -469,7 +514,7 @@ public class Mapper<T> {
      *                                  at least one of those values is {@code null}.
      */
     public ListenableFuture<T> getAsync(final Object... objects) {
-        ListenableFuture<BoundStatement> bsFuture = getQueryAsync(objects);
+        ListenableFuture<BoundStatement> bsFuture = getQueryAsync(false, objects);
         ListenableFuture<ResultSet> rsFuture = GuavaCompatibility.INSTANCE.transformAsync(bsFuture, new AsyncFunction<BoundStatement, ResultSet>() {
             @Override
             public ListenableFuture<ResultSet> apply(BoundStatement bs) throws Exception {
@@ -477,6 +522,29 @@ public class Mapper<T> {
             }
         });
         return Futures.transform(rsFuture, mapOneFunction);
+    }
+
+    /**
+     * Fetch a list of entity based on their primary key asynchronously.
+     * <p/>
+     * This method is basically equivalent to mapping the result of: {@code getManager().getSession().executeAsync(getQuery(objects))}.
+     *
+     * @param objects the primary key of the entities to fetch, or more precisely
+     *                the values for the columns of said primary key in the order of the primary key.
+     * @return a list of entities that match the primary keys
+     * @throws IllegalArgumentException if the number of value provided is fewer than the number of partition keys,
+     *                                  more than the number of primary keys, or if
+     *                                  at least one of those values is {@code null}.
+     */
+    public ListenableFuture<List<T>> getAllAsync(final Object... objects) {
+        ListenableFuture<BoundStatement> bsFuture = getQueryAsync(true, objects);
+        ListenableFuture<ResultSet> rsFuture = GuavaCompatibility.INSTANCE.transformAsync(bsFuture, new AsyncFunction<BoundStatement, ResultSet>() {
+            @Override
+            public ListenableFuture<ResultSet> apply(BoundStatement bs) throws Exception {
+                return session().executeAsync(bs);
+            }
+        });
+        return Futures.transform(rsFuture, mapAllFunction);
     }
 
     /**
